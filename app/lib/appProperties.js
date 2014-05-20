@@ -60,15 +60,18 @@ var appProperties = function() {
 
 	var databasename = 'appProperties';
 	var database;
-	
+	var createdTable = false;
 	this.openDatabase = function(){
 		database = Ti.Database.open(databasename);
 		database.execute('PRAGMA read_uncommitted=true');
-		database.execute('CREATE TABLE IF NOT EXISTS tblBoolean (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data INTEGER)');
-		database.execute('CREATE TABLE IF NOT EXISTS tblDouble (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data REAL)');
-		database.execute('CREATE TABLE IF NOT EXISTS tblInt (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data INTEGER)');
-		database.execute('CREATE TABLE IF NOT EXISTS tblObject (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT)');
-		database.execute('CREATE TABLE IF NOT EXISTS tblString (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT)');
+		if(!createdTable){
+			database.execute('CREATE TABLE IF NOT EXISTS tblBoolean (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data INTEGER)');
+			database.execute('CREATE TABLE IF NOT EXISTS tblDouble (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data REAL)');
+			database.execute('CREATE TABLE IF NOT EXISTS tblInt (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data INTEGER)');
+			database.execute('CREATE TABLE IF NOT EXISTS tblObject (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT)');
+			database.execute('CREATE TABLE IF NOT EXISTS tblString (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT)');
+			createdTable = true;
+		}
 	};
 	
 	this.closeDatabase = function(){
