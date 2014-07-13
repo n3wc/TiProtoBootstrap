@@ -67,7 +67,7 @@ var appProperties = function() {
 	var databasename = 'appProperties';
 	var database;
 	var createdTable = false;
-	this.openDatabase = function(){
+	var openDatabase = function(clearExpiredCache){
 		database = Ti.Database.open(databasename);
 		database.execute('PRAGMA read_uncommitted=true');
 		if(!createdTable){
@@ -78,13 +78,14 @@ var appProperties = function() {
 			database.execute('CREATE TABLE IF NOT EXISTS tblString (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT)');
 			database.execute('CREATE TABLE IF NOT EXISTS tblCache (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT, expires date)');
 			createdTable = true;
-			this.clearCache(true);
+			clearData('Cache', clearExpiredCache);
 		}
 	};
-	
-	this.closeDatabase = function(){
+	this.openDatabase = openDatabase;
+	var closeDatabase = function(){
 		database.close();
 	};
+	this.closeDatabase = closeDatabase;
 	this.getBool = function(key, defaultValue){
 		return getData(key,'Boolean', defaultValue);
 	};
@@ -113,6 +114,7 @@ var appProperties = function() {
 		if(dataType === 'Cache'){
 			query += ' and CURRENT_TIMESTAMP < expires ';
 		}
+		openDatabase();
 		var res = database.execute(query + ' LIMIT 1', key);
 		var ret = defaultValue;
 
@@ -121,6 +123,7 @@ var appProperties = function() {
 			res.next();
 		}
 		res.close();
+		closeDatabase();
 		return ret;
 	}
 	function parseValFromDatabase(data,dataType,defaultValue){
@@ -171,12 +174,16 @@ var appProperties = function() {
 			data = JSON.stringify(data);
 		}
 		try {
+			openDatabase();
+			var query;
 			if(dataType==='Cache'){
-				return database.execute('INSERT OR REPLACE INTO tbl'+dataType+' (key,data,expires) VALUES (?,?,DATETIME(CURRENT_TIMESTAMP, \'+'+secondToExpire+' seconds\'))', key, data);
+				query = 'INSERT OR REPLACE INTO tbl'+dataType+' (key,data,expires) VALUES (?,?,DATETIME(CURRENT_TIMESTAMP, \'+'+secondToExpire+' seconds\'))';
 			}else{
-				return database.execute('INSERT OR REPLACE INTO tbl'+dataType+' (key,data) VALUES (?,?)', key, data);
+				query = 'INSERT OR REPLACE INTO tbl'+dataType+' (key,data) VALUES (?,?)';
 			}
-
+			var retVal = database.execute(query, key, data);
+			closeDatabase();
+			return retVal;
 		} catch(e) {
 			throw new Error(e);
 		}
@@ -207,7 +214,10 @@ var appProperties = function() {
 		}
 
 		try {
-			return database.execute('DELETE FROM tbl'+dataType+' WHERE key=?', key);
+			openDatabase();
+			var retVal = database.execute('DELETE FROM tbl'+dataType+' WHERE key=?', key);
+			closeDatabase();
+			return retVal;
 		} catch(e) {
 			throw new Error(e);
 		}
@@ -241,7 +251,10 @@ var appProperties = function() {
 			if(expiredOnly){
 				query += ' WHERE CURRENT_TIMESTAMP > expires ';
 			}
-			return database.execute(query);
+			openDatabase();
+			var retVal = database.execute(query);
+			closeDatabase();
+			return retVal;
 		} catch(e) {
 			throw new Error(e);
 		}
@@ -274,9 +287,11 @@ var appProperties = function() {
 		if(dataType === 'Cache'){
 			query += ' and CURRENT_TIMESTAMP > expires ';
 		}
+		openDatabase();
 		var rows = database.execute(query+' LIMIT 1', key);
 		var exists = (rows.rowCount > 0);
 		rows.close();
+		closeDatabase();
 		return exists;
 
 	};
@@ -302,6 +317,7 @@ var appProperties = function() {
 	};
 	
 	function getAllKeysData(dataType){
+		openDatabase();
 		var res = database.execute('SELECT key from tbl'+dataType);
 		var ret = [];
 		while (res.isValidRow()) {
@@ -309,6 +325,7 @@ var appProperties = function() {
 			res.next();
 		}
 		res.close();
+		closeDatabase();
 		return ret;
 	}
 };
