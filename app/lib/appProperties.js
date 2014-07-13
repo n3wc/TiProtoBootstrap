@@ -4,7 +4,7 @@
  * this facade uses a local sqlite database instead
  * @author Jesse Newcomer @n3wc
  * @link https://github.com/n3wc/
- * @version 1.0
+ * @version 1.1
  * 
  * Returns the value of a property as specified data type. Returns defaultValue if key does not exist
  * getBool(key,[defaultValue])
@@ -12,6 +12,7 @@
  * getInt(key,[defaultValue])
  * getObject(key,[defaultValue])
  * getString(key,[defaultValue])
+ * getCache(key,[defaultValue])
  * 
  * Sets the value of a property as specified data type. The property will be created if it does not exist.
  * setBool(key,value)
@@ -19,6 +20,7 @@
  * setInt(key,value)
  * setObject(key,value)
  * setString(key,value)
+ * setCache(key,value, secondToExpire)
  * 
  * Deletes the key and value of a property.
  * deleteBool(key)
@@ -26,6 +28,7 @@
  * deleteInt(key)
  * deleteObject(key)
  * deleteString(key)
+ * deleteCache(key)
  * 
  * Returns a boolean whether a property exists.
  * existBool(key)
@@ -33,6 +36,7 @@
  * existInt(key)
  * existObject(key)
  * existString(key)
+ * existCache(key)
  * 
  * Deletes all key values in the specified data type collection.
  * clearBool()
@@ -40,6 +44,7 @@
  * clearInt()
  * clearObject()
  * clearString()
+ * clearCache(expiredOnly)
  * 
  * Returns string array of all keys in the specified data type collection.
  * getAllKeysBool()
@@ -47,8 +52,9 @@
  * getAllKeysInt()
  * getAllKeysObject()
  * getAllKeysString()
+ * getAllKeysCache()
  * 
- * Open database if manually closed
+ * Open database 
  * openDatabase()
  * 
  * Allows the database to be manually closed and releases resources from memory
@@ -70,7 +76,9 @@ var appProperties = function() {
 			database.execute('CREATE TABLE IF NOT EXISTS tblInt (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data INTEGER)');
 			database.execute('CREATE TABLE IF NOT EXISTS tblObject (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT)');
 			database.execute('CREATE TABLE IF NOT EXISTS tblString (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT)');
+			database.execute('CREATE TABLE IF NOT EXISTS tblCache (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE, data TEXT, expires date)');
 			createdTable = true;
+			this.clearCache(true);
 		}
 	};
 	
@@ -92,12 +100,20 @@ var appProperties = function() {
 	this.getString = function(key, defaultValue){
 		return getData(key,'String', defaultValue);
 	};
+	this.getCache = function(key, defaultValue){
+		return getData(key,'Cache', defaultValue);
+	};
 	
 	function getData(key, dataType, defaultValue){
 		if (typeof key == 'undefined') {
 			throw new Error("typeof key == 'undefined'");
 		}
-		var res = database.execute('SELECT * from tbl'+dataType+' WHERE key = ? LIMIT 1', key);
+		var query = 'SELECT * from tbl'+dataType+' WHERE key = ? ';
+		
+		if(dataType === 'Cache'){
+			query += ' and CURRENT_TIMESTAMP < expires ';
+		}
+		var res = database.execute(query + ' LIMIT 1', key);
 		var ret = defaultValue;
 
 		while (res.isValidRow()) {
@@ -140,18 +156,26 @@ var appProperties = function() {
 	this.setString = function(key, data){
 		return saveData(key,data,'String');
 	};
-	function saveData(key, data, dataType){
+	this.setCache = function(key, data, secondToExpire){
+		return saveData(key,data,'Cache', secondToExpire);
+	};
+	
+	function saveData(key, data, dataType, secondToExpire){
 		if ( typeof key == 'undefined') {
 			throw new Error("typeof key == 'undefined'");
 		}
-		if (typeof data !== dataType.toLowerCase() && ! (typeof data === 'number' && (dataType.toLowerCase() === 'int' || dataType.toLowerCase() === 'double'))) {
+		if (dataType !== 'Cache' && typeof data !== dataType.toLowerCase() && ! (typeof data === 'number' && (dataType.toLowerCase() === 'int' || dataType.toLowerCase() === 'double'))) {
 			throw new Error("typeof data expected as '"+dataType.toLowerCase()+"' instead recieved '"+(typeof data)+"'");
 		}
-		if(dataType==='Object'){
+		if(dataType==='Object' || dataType==='Cache'){
 			data = JSON.stringify(data);
 		}
 		try {
-			return database.execute('INSERT OR REPLACE INTO tbl'+dataType+' (key,data) VALUES (?,?)', key, data);
+			if(dataType==='Cache'){
+				return database.execute('INSERT OR REPLACE INTO tbl'+dataType+' (key,data,expires) VALUES (?,?,DATETIME(CURRENT_TIMESTAMP, \'+'+secondToExpire+' seconds\'))', key, data);
+			}else{
+				return database.execute('INSERT OR REPLACE INTO tbl'+dataType+' (key,data) VALUES (?,?)', key, data);
+			}
 
 		} catch(e) {
 			throw new Error(e);
@@ -172,6 +196,9 @@ var appProperties = function() {
 	};
 	this.deleteString = function(key){
 		return deleteData(key,'String');
+	};
+	this.deleteCache = function(key){
+		return deleteData(key,'Cache');
 	};
 
 	deleteData = function(key,dataType) {
@@ -202,16 +229,22 @@ var appProperties = function() {
 	this.clearString = function(){
 		return clearData('String');
 	};
-	clearData = function(dataType) {
+	this.clearCache = function(expiredOnly){
+		return clearData('Cache', expiredOnly);
+	};
+	clearData = function(dataType, expiredOnly) {
 		if ( typeof dataType == 'undefined') {
 			throw new Error("typeof dataType == 'undefined'");
 		}
 		try {
-			return database.execute('DELETE FROM tbl'+dataType);
+			var query = 'DELETE FROM tbl'+dataType;
+			if(expiredOnly){
+				query += ' WHERE CURRENT_TIMESTAMP > expires ';
+			}
+			return database.execute(query);
 		} catch(e) {
 			throw new Error(e);
 		}
-
 	};
 	
 	this.existBool = function(key){
@@ -226,6 +259,9 @@ var appProperties = function() {
 	this.existObject = function(key){
 		return existData(key,'Object');
 	};
+	this.existObject = function(key){
+		return existData(key,'Cache');
+	};
 	this.existString = function(key){
 		return existData(key,'String');
 	};
@@ -234,8 +270,11 @@ var appProperties = function() {
 		if ( typeof key == 'undefined') {
 			throw new Error("typeof key == 'undefined'");
 		}
-
-		var rows = database.execute('SELECT id FROM tbl'+dataType+' WHERE key=? LIMIT 1', key);
+		var query = 'SELECT id FROM tbl'+dataType+' WHERE key=? ';
+		if(dataType === 'Cache'){
+			query += ' and CURRENT_TIMESTAMP > expires ';
+		}
+		var rows = database.execute(query+' LIMIT 1', key);
 		var exists = (rows.rowCount > 0);
 		rows.close();
 		return exists;
@@ -257,6 +296,9 @@ var appProperties = function() {
 	};
 	this.getAllKeysString = function(){
 		return getAllKeysData('String');
+	};
+	this.getAllKeysCache = function(){
+		return getAllKeysData('Cache');
 	};
 	
 	function getAllKeysData(dataType){
