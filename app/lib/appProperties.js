@@ -117,12 +117,13 @@ var appProperties = function() {
 		openDatabase();
 		var res = database.execute(query + ' LIMIT 1', key);
 		var ret = defaultValue;
-
-		while (res.isValidRow()) {
-			ret = parseValFromDatabase(res.fieldByName('data'),dataType,defaultValue);
-			res.next();
+		if(res !== null){
+			while (res.isValidRow()) {
+				ret = parseValFromDatabase(res.fieldByName('data'),dataType,defaultValue);
+				res.next();
+			}
+			res.close();
 		}
-		res.close();
 		closeDatabase();
 		return ret;
 	}
@@ -135,6 +136,9 @@ var appProperties = function() {
 		    return data?true:false;
 		    break;
 		case 'Object':
+		    return JSON.parse(data);
+		    break;
+		case 'Cache':
 		    return JSON.parse(data);
 		    break;
 		default:
@@ -289,7 +293,7 @@ var appProperties = function() {
 		}
 		openDatabase();
 		var rows = database.execute(query+' LIMIT 1', key);
-		var exists = (rows.rowCount > 0);
+		var exists = rows?(rows.rowCount > 0):0;
 		rows.close();
 		closeDatabase();
 		return exists;
@@ -320,11 +324,13 @@ var appProperties = function() {
 		openDatabase();
 		var res = database.execute('SELECT key from tbl'+dataType);
 		var ret = [];
-		while (res.isValidRow()) {
-			ret.push(res.fieldByName('key'));
-			res.next();
+		if(res !== null){
+			while (res.isValidRow()) {
+				ret.push(res.fieldByName('key'));
+				res.next();
+			}
+			res.close();
 		}
-		res.close();
 		closeDatabase();
 		return ret;
 	}
